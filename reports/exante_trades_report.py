@@ -38,7 +38,7 @@ class ExanteTradesReport:
     def __init__(self, tax_year):
         self.tax_year = tax_year
 
-    def calculate(self, taxation, filename):
+    def process(self, taxation, filename):
         trade_log = TradeLog(self, taxation)
         trade_log.load_from_file(filename)
         trade_log.calculate_closed_positions(self.tax_year)

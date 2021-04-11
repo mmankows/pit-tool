@@ -3,9 +3,9 @@ import argparse
 import logging
 from datetime import datetime
 
-from reports import SUPPORTED_REPORTS
+from reports import SUPPORTED_REPORTS, sniff_report_type
 from taxations import SUPPORTED_TAXATIONS
-from tradelog import TradeLog
+from utils import logger
 
 
 def main():
@@ -17,11 +17,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Extend csv file with official rates and calculate rates in selected currency.'
     )
-    parser.add_argument('input_csv')
-    parser.add_argument('--type',
-                        help=f"Provide report type, supported reports: {SUPPORTED_REPORTS.keys()}",
-                        choices=list(SUPPORTED_REPORTS.keys()),
-                        ),
+    parser.add_argument('input_csv', nargs='+')
     parser.add_argument('--tax',
                         help=f"Provide taxation method, supported: {SUPPORTED_TAXATIONS.keys()}",
                         choices=list(SUPPORTED_REPORTS.keys()),
@@ -36,10 +32,18 @@ def main():
     logging.basicConfig(level=getattr(logging, args.log))
 
     tax_year = args.year
-    report = SUPPORTED_REPORTS[args.type](tax_year)
+
     taxation = SUPPORTED_TAXATIONS[args.tax](tax_year)
 
-    report.calculate(taxation, args.input_csv)
+    for input_file_path in args.input_csv:
+        report_type = sniff_report_type(input_file_path)
+        logger.info(f"Parsing {input_file_path}, identified report type {report_type}")
+
+        report = SUPPORTED_REPORTS[report_type](tax_year)
+        report.process(taxation, input_file_path)
+
+    logger.info(taxation.summary)
+    # logger.info(f"{taxation}")
 
 
 if __name__ == '__main__':

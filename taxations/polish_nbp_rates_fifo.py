@@ -8,7 +8,7 @@ from cached_property import cached_property
 
 from taxations.base_taxation import BaseTaxation
 from tradelog import TradeRecord
-from utils import read_csv_file
+from utils import read_csv_file, logger
 
 
 class PolishNbpRatesFIFO(BaseTaxation):
@@ -17,14 +17,47 @@ class PolishNbpRatesFIFO(BaseTaxation):
 
     For closed position executes first-in, first-out.
     Counts open value and close value separately, adjusted to PLN.
+
+    https://dnarynkow.pl/jak-rozliczyc-podatek-od-dywidendy-i-zysku-z-inwestycji-w-spolki-zagraniczne/
     """
     RATES_URL_TEMPLATE = 'https://www.nbp.pl/kursy/Archiwum/archiwum_tab_a_{}.csv'
+    BASE_CURRENCY = 'PLN'
     SUPPORTED_CURRENCIES = {
         'EUR': 1,
         'USD': 1,
         'RUB': 1,
         'CHF': 1,
     }
+    TAX_RATE = D('0.19')
+
+    def __init__(self, *args, **kwargs):
+        super(PolishNbpRatesFIFO, self).__init__(*args, **kwargs)
+        self.total_dividend_value = 0
+        self.total_dividend_owed_tax = 0
+        self.total_dividend_withholding_tax = 0
+        self.total_transaction_income = 0
+        self.total_transaction_cost = 0
+        self.total_costs = 0
+
+    @property
+    def summary(self) -> str:
+        profit = self.total_transaction_income - self.total_transaction_cost - self.total_costs
+        return (
+              f"\n=Total Transactions open        = {self.total_transaction_cost} {self.BASE_CURRENCY}"
+              f"\n=Total Transactions closed      = {self.total_transaction_income} {self.BASE_CURRENCY}"
+              f"\n=Total costs                    = {self.total_costs} {self.BASE_CURRENCY}"
+              f"\n=Transactions Profit/Loss       = {profit} {self.BASE_CURRENCY}"
+              f"\n=Total Dividend value           = {self.total_dividend_value} {self.BASE_CURRENCY}"
+              f"\n=Total Dividend withholding tax = {self.total_dividend_withholding_tax} {self.BASE_CURRENCY}"
+              f"\n================================================"
+              f"\n=Total Dividend owed tax        = {self.total_dividend_owed_tax} {self.BASE_CURRENCY}"
+              f"\n=Total Transactions owed tax    = {self.total_transaction_owed_tax} {self.BASE_CURRENCY}"
+        )
+
+    @property
+    def total_transaction_owed_tax(self):
+        profit = self.total_transaction_income - self.total_transaction_cost - self.total_costs
+        return round(self.TAX_RATE * max(profit, 0))
 
     @cached_property
     def rates(self):
@@ -61,21 +94,21 @@ class PolishNbpRatesFIFO(BaseTaxation):
 
     def exchange(self, currency: str, value: D, date: datetime.date) -> D:
         exchange_rate = self.rates[date - datetime.timedelta(days=1)][currency]
-        return exchange_rate * value
+        return round(exchange_rate * value, 2)
 
-    def calculate_closed_transaction_value(self, open_trade: TradeRecord, close_trade: TradeRecord):
+    def add_closed_transaction(self, open_trade: TradeRecord, close_trade: TradeRecord):
         closed_quantity = min(close_trade.quantity, open_trade.quantity)
 
-        value_open = round(self.exchange(
+        value_open = self.exchange(
             open_trade.currency,
             open_trade.price * closed_quantity * open_trade.multiplier,
             open_trade.timestamp.date()
-        ), 2)
-        value_close = round(self.exchange(
+        )
+        value_close = self.exchange(
             close_trade.currency,
             close_trade.price * closed_quantity * close_trade.multiplier,
             close_trade.timestamp.date()
-        ), 2)
+        )
 
         # Support shorts
         if open_trade.side == TradeRecord.SELL:
@@ -86,6 +119,21 @@ class PolishNbpRatesFIFO(BaseTaxation):
             value_open = 0
             value_close = 0
 
-        profit = value_close - value_open
+        self.total_transaction_cost += value_open
+        self.total_transaction_income += value_close
 
-        return value_open, value_close, profit
+    def add_dividend(self, symbol, currency, value, date, withholding_tax_value):
+        dividend_income = D(round(self.exchange(currency, value, date)))
+        model_tax = abs(round(dividend_income * self.TAX_RATE, 2))
+        paid_tax = abs(round(self.exchange(currency, withholding_tax_value, date), 2))
+        owed_tax = model_tax - paid_tax
+
+        logger.debug(f"Dividend: {date.isoformat()} {symbol} {dividend_income} tax: ({paid_tax}/{model_tax})")
+
+        self.total_dividend_value += dividend_income
+        self.total_dividend_withholding_tax += paid_tax
+        self.total_dividend_owed_tax += owed_tax
+
+    def add_cost(self, currency: str, value: D, date: datetime.date) -> None:
+        cost_value = round(self.exchange(currency, abs(value), date), 2)
+        self.total_costs += cost_value

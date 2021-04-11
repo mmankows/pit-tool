@@ -21,6 +21,8 @@ class ExanteAllTransactions(BaseReport):
         'Comment': 'None'
     }
     """
+    column_account = 'Account ID'
+    column_symbol = 'Symbol ID'
     column_type = 'Operation type'
     column_asset = 'Asset'
     column_value = 'Sum'
@@ -30,18 +32,40 @@ class ExanteAllTransactions(BaseReport):
     type_commission = "COMMISSION"
     type_interest = "INTEREST"
 
-    def calculate(self, taxation, filename):
-        total_costs = 0
+    def process(self, taxation, filename):
+        dividends_details = {}
         for row in read_csv_file(filename):
             operation_type = row[self.column_type]
             value = D(row[self.column_value])
             timestamp = parse(row[self.column_timestamp])
+            key = f"{row[self.column_symbol]}@{row[self.column_account]}:{timestamp.date().isoformat()}"
 
             if timestamp.year != self.tax_year:
                 continue
 
+            # Calculate total costs
             if operation_type in {self.type_commission, self.type_interest}:
                 currency = row[self.column_asset]
-                total_costs += round(taxation.exchange(currency, value, timestamp.date()), 2)
+                taxation.add_cost(currency, value, timestamp.date())
+                continue
 
-        logger.info(f"Total INTEREST and COMMISSION costs: {total_costs}")
+            # Collect dividends and taxes
+            if operation_type == self.type_dividend:
+                dividends_details.setdefault(key, {})
+                dividends_details[key].update({
+                    'symbol': key,
+                    'value': D(row[self.column_value]),
+                    'date': timestamp.date(),
+                    'currency': row[self.column_asset],
+                })
+                continue
+
+            if operation_type == self.type_dividend_tax:
+                dividends_details.setdefault(key, {})
+                dividends_details[key].update({
+                    'withholding_tax_value': D(row[self.column_value]),
+                })
+
+        # Summarize dividends
+        for dividend_name, details in dividends_details.items():
+            taxation.add_dividend(**details)

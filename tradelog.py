@@ -1,8 +1,14 @@
+
+
 import datetime
 from decimal import Decimal as D
 from enum import Enum
-
+from typing import List, TYPE_CHECKING
 from utils import logger, read_csv_file
+
+if TYPE_CHECKING:
+    from reports.base_report import BaseReport
+    from taxations.base_taxation import BaseTaxation
 
 
 class InstrumentType(Enum):
@@ -54,36 +60,34 @@ class TradeRecord:
 
 
 class TradeLog:
-    def __init__(self, report, taxation):
+    def __init__(self, report: "BaseReport", taxation: "BaseTaxation") -> None:
         self.report = report
         self.taxation = taxation
         self.records = {}
         self.outstanding_positions = []
-        self.total_value_open = self.total_value_close = 0
+        self.total_cost = self.total_income = 0
 
     def __str__(self) -> str:
         return (
-            f"= Value open  : {self.total_value_open}\n"
-            f"= Value closed: {self.total_value_close}\n"
             f"= Position left for next tax year: {TradeRecord.format_trades(self.outstanding_positions)}"
         )
 
     def reset_stats(self):
         self.outstanding_positions = []
-        self.total_value_open = 0
-        self.total_value_close = 0
+        self.total_cost = 0
+        self.total_income = 0
 
     def add_record(self, trade_record: TradeRecord) -> None:
         self.records[trade_record.symbol] = self.records.get(trade_record.symbol, [])
         self.records[trade_record.symbol].append(trade_record)
 
-    def load_from_file(self, filename):
+    def load_from_file(self, filename: str) -> None:
         for row in read_csv_file(filename):
             trade_record = self.report.parse_trade_log_record(row)
             if trade_record:
                 self.add_record(trade_record)
 
-    def calc_profit_fifo(self, trades, tax_year):
+    def calc_profit_fifo(self, trades: List[TradeRecord], tax_year: int):
         """
         Calculates closed transactions profits for given instrument trades history.
         :param trades:
@@ -96,8 +100,6 @@ class TradeLog:
             TradeRecord.BUY: [t for t in trades if t.side == TradeRecord.BUY][::-1],
             TradeRecord.SELL: [t for t in trades if t.side == TradeRecord.SELL][::-1],
         }
-        total_open = 0
-        total_close = 0
 
         def get_next_trade(cur_trade=None):
             if not (trades_by_side[TradeRecord.BUY] or trades_by_side[TradeRecord.SELL]):
@@ -128,9 +130,7 @@ class TradeLog:
                 break
 
             closed_quantity = min(close_trade.quantity, open_trade.quantity)
-            value_open, value_close, profit = self.taxation.calculate_closed_transaction_value(open_trade, close_trade)
-            total_open += value_open
-            total_close += value_close
+            self.taxation.add_closed_transaction(open_trade, close_trade)
 
             # Both sides closed
             if close_trade.quantity == open_trade.quantity:
@@ -146,19 +146,18 @@ class TradeLog:
                     close_trade.copy(quantity=close_trade.quantity - closed_quantity)
                 )
 
-            logger.debug(f"{close_trade} ~ {open_trade} profit: {profit}")
+            logger.debug(f"{close_trade} ~ {open_trade}")
 
         # Update stats
         pos_left = trades_by_side[TradeRecord.BUY] + trades_by_side[TradeRecord.SELL]
         self.outstanding_positions.extend(pos_left)
-        self.total_value_open += total_open
-        self.total_value_close += total_close
 
         assert not trades_by_side[TradeRecord.BUY] or not trades_by_side[TradeRecord.SELL]
         assert not pos_left or sum(t.quantity for t in trades) != 0
 
-        logger.info(
-            f"{trades[0].symbol} tot_open: {total_open} tot_close: {total_close} profit: {total_close - total_open} pos: {pos_left}")
+        # TODO - fix logger
+        # logger.info(
+        #     f"{trades[0].symbol} tot_open: {total_cost} tot_close: {total_income} profit: {total_income - total_cost} pos: {pos_left}")
 
     def calculate_closed_positions(self, tax_year):
         logger.info(f"Calculating closed positions for tax_year {tax_year}")
