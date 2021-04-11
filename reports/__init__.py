@@ -1,7 +1,9 @@
 from reports.exante_trades_report import ExanteTradesReport
+from reports.exante_all_transactions import ExanteAllTransactions
 
 SUPPORTED_REPORTS = {
-    "exante_trades_report": ExanteTradesReport,
+    "EXANTE_TRADES": ExanteTradesReport,
+    "EXANTE_TRANSACTIONS": ExanteAllTransactions,
 }
 
 __all__ = [

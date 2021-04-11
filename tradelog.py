@@ -1,9 +1,8 @@
-import csv
 import datetime
 from decimal import Decimal as D
 from enum import Enum
 
-from utils import get_file_encoding, logger
+from utils import logger, read_csv_file
 
 
 class InstrumentType(Enum):
@@ -11,11 +10,10 @@ class InstrumentType(Enum):
     OPTION = "OPTION"
 
 
-BUY = 1
-SELL = -BUY
-
-
 class TradeRecord:
+    BUY = 1
+    SELL = -BUY
+
     def __init__(self,
          symbol: str,
          quantity: int,
@@ -56,12 +54,11 @@ class TradeRecord:
 
 
 class TradeLog:
-    def __init__(self, rates_by_date, config):
-        self.config = config
-        self.rates_by_date = rates_by_date
+    def __init__(self, report, taxation):
+        self.report = report
+        self.taxation = taxation
         self.records = {}
         self.outstanding_positions = []
-        self.reset_stats()
         self.total_value_open = self.total_value_close = 0
 
     def __str__(self) -> str:
@@ -81,12 +78,10 @@ class TradeLog:
         self.records[trade_record.symbol].append(trade_record)
 
     def load_from_file(self, filename):
-        with open(filename, encoding=get_file_encoding(filename)) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                trade_record = self.config.get_trade_log_record(row)
-                if trade_record:
-                    self.add_record(trade_record)
+        for row in read_csv_file(filename):
+            trade_record = self.report.parse_trade_log_record(row)
+            if trade_record:
+                self.add_record(trade_record)
 
     def calc_profit_fifo(self, trades, tax_year):
         """
@@ -98,25 +93,25 @@ class TradeLog:
         logger.debug(f"Calculating profit for following trades: {TradeRecord.format_trades(trades)}")
 
         trades_by_side = {
-            BUY: [t for t in trades if t.side == BUY][::-1],
-            SELL: [t for t in trades if t.side == SELL][::-1],
+            TradeRecord.BUY: [t for t in trades if t.side == TradeRecord.BUY][::-1],
+            TradeRecord.SELL: [t for t in trades if t.side == TradeRecord.SELL][::-1],
         }
         total_open = 0
         total_close = 0
 
         def get_next_trade(cur_trade=None):
-            if not (trades_by_side[BUY] or trades_by_side[SELL]):
+            if not (trades_by_side[TradeRecord.BUY] or trades_by_side[TradeRecord.SELL]):
                 return None
 
             if cur_trade is None:
-                if not trades_by_side[BUY]:
-                    return trades_by_side[SELL].pop()
-                elif not trades_by_side[SELL]:
-                    return trades_by_side[BUY].pop()
-                elif trades_by_side[SELL][0].timestamp > trades_by_side[BUY][0].timestamp:
-                    return trades_by_side[BUY].pop()
+                if not trades_by_side[TradeRecord.BUY]:
+                    return trades_by_side[TradeRecord.SELL].pop()
+                elif not trades_by_side[TradeRecord.SELL]:
+                    return trades_by_side[TradeRecord.BUY].pop()
+                elif trades_by_side[TradeRecord.SELL][0].timestamp > trades_by_side[TradeRecord.BUY][0].timestamp:
+                    return trades_by_side[TradeRecord.BUY].pop()
                 else:
-                    return trades_by_side[SELL].pop()
+                    return trades_by_side[TradeRecord.SELL].pop()
             else:
                 # Get from other side
                 try:
@@ -133,21 +128,9 @@ class TradeLog:
                 break
 
             closed_quantity = min(close_trade.quantity, open_trade.quantity)
-            exchange_rate_open = self.rates_by_date[open_trade.timestamp.date() - datetime.timedelta(days=1)][
-                open_trade.currency]
-            exchange_rate_close = self.rates_by_date[close_trade.timestamp.date() - datetime.timedelta(days=1)][
-                close_trade.currency]
-            value_open = round(closed_quantity * open_trade.price * open_trade.multiplier * exchange_rate_open, 2)
-            value_close = round(closed_quantity * close_trade.price * close_trade.multiplier * exchange_rate_close, 2)
-            # Support shorts
-            if open_trade.side == SELL:
-                value_open, value_close = value_close, value_open
-
-            # Only closed in given tax year generate profit/loss
-            if close_trade.timestamp.year == tax_year:
-                total_open += value_open
-                total_close += value_close
-                profit = value_close - value_open
+            value_open, value_close, profit = self.taxation.calculate_closed_transaction_value(open_trade, close_trade)
+            total_open += value_open
+            total_close += value_close
 
             # Both sides closed
             if close_trade.quantity == open_trade.quantity:
@@ -166,12 +149,12 @@ class TradeLog:
             logger.debug(f"{close_trade} ~ {open_trade} profit: {profit}")
 
         # Update stats
-        pos_left = trades_by_side[BUY] + trades_by_side[SELL]
+        pos_left = trades_by_side[TradeRecord.BUY] + trades_by_side[TradeRecord.SELL]
         self.outstanding_positions.extend(pos_left)
         self.total_value_open += total_open
         self.total_value_close += total_close
 
-        assert not trades_by_side[BUY] or not trades_by_side[SELL]
+        assert not trades_by_side[TradeRecord.BUY] or not trades_by_side[TradeRecord.SELL]
         assert not pos_left or sum(t.quantity for t in trades) != 0
 
         logger.info(

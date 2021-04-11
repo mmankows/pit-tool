@@ -1,5 +1,5 @@
 # Where temp data is stored
-temp/
+temp/*
 # Pycharm
 .idea/
 
