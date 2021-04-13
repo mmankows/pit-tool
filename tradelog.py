@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 class InstrumentType(Enum):
     STOCK = "STOCK"
     OPTION = "OPTION"
+    CASH = "CASH"
 
 
 class TradeRecord:
@@ -60,8 +61,7 @@ class TradeRecord:
 
 
 class TradeLog:
-    def __init__(self, report: "BaseReport", taxation: "BaseTaxation") -> None:
-        self.report = report
+    def __init__(self, taxation: "BaseTaxation") -> None:
         self.taxation = taxation
         self.records = {}
         self.outstanding_positions = []
@@ -80,12 +80,6 @@ class TradeLog:
     def add_record(self, trade_record: TradeRecord) -> None:
         self.records[trade_record.symbol] = self.records.get(trade_record.symbol, [])
         self.records[trade_record.symbol].append(trade_record)
-
-    def load_from_file(self, filename: str) -> None:
-        for row in read_csv_file(filename):
-            trade_record = self.report.parse_trade_log_record(row)
-            if trade_record:
-                self.add_record(trade_record)
 
     def calc_profit_fifo(self, trades: List[TradeRecord], tax_year: int):
         """

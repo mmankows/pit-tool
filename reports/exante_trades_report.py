@@ -3,11 +3,12 @@ from typing import Optional
 from decimal import Decimal as D
 from dateutil.parser import parse
 
+from reports.base_report import BaseReport
 from tradelog import TradeRecord, InstrumentType, TradeLog
-from utils import logger
+from utils import logger, read_csv_file
 
 
-class ExanteTradesReport:
+class ExanteTradesReport(BaseReport):
     """
     Designed to handle Exante Trades report format.
 
@@ -35,12 +36,14 @@ class ExanteTradesReport:
         "OPTION": InstrumentType.OPTION,
     }
 
-    def __init__(self, tax_year):
-        self.tax_year = tax_year
-
     def process(self, taxation, filename):
-        trade_log = TradeLog(self, taxation)
-        trade_log.load_from_file(filename)
+        trade_log = TradeLog(taxation)
+
+        for row in read_csv_file(filename):
+            trade_record = self.parse_trade_log_record(row)
+            if trade_record:
+                trade_log.add_record(trade_record)
+
         trade_log.calculate_closed_positions(self.tax_year)
 
     @classmethod
