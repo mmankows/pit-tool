@@ -17,6 +17,23 @@ class InstrumentType(Enum):
     CASH = "CASH"
 
 
+STOCK_EXCHANGE_COUNTRIES = {
+    "ARCA": "US",
+    "NASDAQ": "US",
+    "CBOE": "US",
+    "NYSE": "US",
+    "BATS": "US",
+    "XETRA": "DE",
+    "IBIS": "DE",
+    "LSE": "DE",
+    "SIX": "CH",
+    "SBF": "FR",
+    "BVME": "IT", # Borsa italiana
+    "WSE": "PL",
+    "MOEX": "RU",
+}
+
+
 class TradeRecord:
     BUY = 1
     SELL = -BUY
@@ -29,6 +46,7 @@ class TradeRecord:
          timestamp: datetime.datetime,
          side: int,
          instrument: InstrumentType,
+         commission: D,
     ):
         self.symbol = symbol
         self.quantity = quantity
@@ -38,6 +56,9 @@ class TradeRecord:
         self.side = side
         self.instrument = instrument
         self.multiplier = 100 if self.instrument == InstrumentType.OPTION else 1
+        self.exchange = symbol.split('@')[0].split('.')[1]
+        self.commission = commission
+        assert self.exchange in STOCK_EXCHANGE_COUNTRIES, f"Unknown exchange {self.exchange} for {self.symbol}"
 
     def __str__(self) -> str:
         return f"<Trade: {self.timestamp.isoformat()} {self.symbol} {self.side * self.quantity}x{self.price}>"
@@ -55,6 +76,7 @@ class TradeRecord:
             timestamp=self.timestamp,
             side=self.side,
             instrument=self.instrument,
+            commission=self.commission,
         )
         params.update(**updates)
         return TradeRecord(**params)

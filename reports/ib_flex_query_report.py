@@ -66,14 +66,18 @@ class IBFlexQueryReport(BaseReport):
                     quantity = int(quantity * rate_from / rate_to)
                     logger.warning(f"SPLIT DONE! {rate_from}:{rate_to} {price}, {quantity}")
 
+            assert attrs['ibCommissionCurrency'] == attrs['currency']
+
+            exchange = attrs['listingExchange'] or attrs['underlyingListingExchange']
             trade_log.add_record(TradeRecord(
-                symbol=f"{symbol}.{attrs['listingExchange']}@{attrs['accountId']}",
+                symbol=f"{symbol}.{exchange}@{attrs['accountId']}",
                 quantity=quantity,
                 price=price,
                 currency=attrs['currency'],
                 timestamp=timestamp,
                 side=side_modifier,
                 instrument=instrument,
+                commission=abs(D(attrs['ibCommission'])),
             ))
 
         trade_log.calculate_closed_positions(self.tax_year)

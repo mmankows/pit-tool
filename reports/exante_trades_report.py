@@ -28,12 +28,14 @@ class ExanteTradesReport(BaseReport):
     column_instrument = 'Symbol ID'
     column_side = 'Side'
     column_type = 'Type'
+    column_commission = 'Commission'
     side_buy = 'buy'
     side_sell = 'sell'
 
     instrument_map = {
         "STOCK": InstrumentType.STOCK,
         "OPTION": InstrumentType.OPTION,
+        "FOREX": InstrumentType.CASH,
     }
 
     def process(self, taxation, filename):
@@ -54,6 +56,7 @@ class ExanteTradesReport(BaseReport):
             logger.warning(f"Unsupported instument type: {row[cls.column_type]}, skipping.")
             return
 
+        assert row["Commission Currency"] == row[cls.column_currency]
         side_modifier = TradeRecord.BUY if row[cls.column_side] == cls.side_buy else TradeRecord.SELL
         return TradeRecord(
             symbol=f"{row[cls.column_instrument]}@{row[cls.column_account]}",
@@ -63,4 +66,5 @@ class ExanteTradesReport(BaseReport):
             timestamp=parse(row[cls.column_timestamp]),
             side=side_modifier,
             instrument=instrument_type,
+            commission=abs(D(row[cls.column_commission])),
         )
