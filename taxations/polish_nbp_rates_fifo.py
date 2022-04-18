@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import requests
 import os
 import datetime
+import tempfile
 from decimal import Decimal as D
 import re
 
@@ -106,7 +109,7 @@ class PolishNbpRatesFIFO(BaseTaxation):
         # For early January transactions rates from previous tax year needed
         for tax_year in (self.tax_year-1, self.tax_year):
             url = self.RATES_URL_TEMPLATE.format(tax_year)
-            saved_file = f'/tmp/nbp_rates_{tax_year}.csv'
+            saved_file = tempfile.gettempdir() / Path(f'nbp_rates_{tax_year}.csv')
 
             if not os.path.exists(saved_file):
                 logger.info(f"NBP Rates file not found, fetching {url} into {saved_file}")
