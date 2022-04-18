@@ -4,7 +4,7 @@ from decimal import Decimal as D
 from dateutil.parser import parse
 
 from reports.base_report import BaseReport
-from tradelog import TradeRecord, InstrumentType, TradeLog
+from tradelog import TradeRecord, InstrumentType
 from utils import logger, read_csv_file
 
 
@@ -39,14 +39,11 @@ class ExanteTradesReport(BaseReport):
     }
 
     def process(self, taxation, filename):
-        trade_log = TradeLog(taxation)
 
         for row in read_csv_file(filename):
             trade_record = self.parse_trade_log_record(row)
             if trade_record:
-                trade_log.add_record(trade_record)
-
-        trade_log.calculate_closed_positions(self.tax_year)
+                self.trade_log.add_record(trade_record)
 
     @classmethod
     def parse_trade_log_record(cls, row) -> Optional[TradeRecord]:
@@ -59,7 +56,7 @@ class ExanteTradesReport(BaseReport):
         assert row["Commission Currency"] == row[cls.column_currency]
         side_modifier = TradeRecord.BUY if row[cls.column_side] == cls.side_buy else TradeRecord.SELL
         return TradeRecord(
-            symbol=f"{row[cls.column_instrument]}@{row[cls.column_account]}",
+            symbol=f"{row[cls.column_instrument]}@EX{row[cls.column_account]}",
             quantity=int(row[cls.column_quantity]),
             price=D(row[cls.column_price]),
             currency=row[cls.column_currency],

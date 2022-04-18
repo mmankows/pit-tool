@@ -31,6 +31,7 @@ STOCK_EXCHANGE_COUNTRIES = {
     "BVME": "IT", # Borsa italiana
     "WSE": "PL",
     "MOEX": "RU",
+    "TMX": "CA", # Toronto
 }
 
 

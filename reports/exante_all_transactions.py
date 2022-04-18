@@ -44,13 +44,12 @@ class ExanteAllTransactions(BaseReport):
                 continue
 
             # Calculate total costs
-            if operation_type in {self.type_commission, self.type_interest}:
+            elif operation_type in {self.type_commission, self.type_interest}:
                 currency = row[self.column_asset]
                 taxation.add_cost(currency, value, timestamp.date())
-                continue
 
             # Collect dividends and taxes
-            if operation_type == self.type_dividend:
+            elif operation_type == self.type_dividend:
                 dividends_details.setdefault(key, {})
                 dividends_details[key].update({
                     'symbol': key,
@@ -58,9 +57,8 @@ class ExanteAllTransactions(BaseReport):
                     'date': timestamp.date(),
                     'currency': row[self.column_asset],
                 })
-                continue
 
-            if operation_type == self.type_dividend_tax:
+            elif operation_type == self.type_dividend_tax:
                 dividends_details.setdefault(key, {})
                 dividends_details[key].update({
                     'withholding_tax_value': D(row[self.column_value]),

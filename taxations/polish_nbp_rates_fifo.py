@@ -4,7 +4,7 @@ import datetime
 from decimal import Decimal as D
 import re
 
-from cached_property import cached_property
+from functools import cached_property
 
 from taxations.base_taxation import BaseTaxation
 from tradelog import TradeRecord, STOCK_EXCHANGE_COUNTRIES
@@ -68,14 +68,15 @@ class PolishNbpRatesFIFO(BaseTaxation):
         print(self.per_position_profit)
         return (
               f"\n=Total Transactions open value  = {self.total_transaction_cost} {self.BASE_CURRENCY}"
-              f"\n=Total Transactions income      = {self.total_transaction_income} {self.BASE_CURRENCY}"
-              f"\n=Total Transactions cost & fees = {total_transaction_costs_and_fees} {self.BASE_CURRENCY}"  
+              f"\n=Total Transactions income      = {self.total_transaction_income} {self.BASE_CURRENCY} (PIT przychod)"
+              f"\n=Total Transactions cost & fees = {total_transaction_costs_and_fees} {self.BASE_CURRENCY} (PIT koszt)"  
               f"\n=Fees and Costs                 = {self.total_costs} {self.BASE_CURRENCY}"
               f"\n=Transactions Profit/Loss       = {profit} {self.BASE_CURRENCY}"
-              f"\n=Total Dividend value           = {self.total_dividend_value} {self.BASE_CURRENCY}"
-              f"\n=Total Dividend withholding tax = {round(self.total_dividend_withholding_tax,2)} {self.BASE_CURRENCY}"
+              f"\n=Transactions P/L - costs      = {profit-self.total_costs} {self.BASE_CURRENCY}"
+              f"\n=Total Dividend value           = {self.total_dividend_value} {self.BASE_CURRENCY} (PIT dywidendy otrzymane brutto)"
+              f"\n=Total Dividend withholding tax = {round(self.total_dividend_withholding_tax,2)} {self.BASE_CURRENCY} (PIT podatek u zrodla)"
               f"\n========  DIVIDENDS  ==========================="
-              f"\n=Total Dividend owed tax        = {round(self.total_dividend_owed_tax,2)} {self.BASE_CURRENCY}"
+              f"\n=Total Dividend owed tax        = {round(self.total_dividend_owed_tax,2)} {self.BASE_CURRENCY} (PIT podatek nalezny)"
               f"\n=Total Transactions owed tax    = {self.total_transaction_owed_tax} {self.BASE_CURRENCY}"
               f"\n========  PIT ZG ==============================="
               f"{self.summary_pit_zg}"
@@ -100,25 +101,28 @@ class PolishNbpRatesFIFO(BaseTaxation):
 
     @cached_property
     def rates(self):
-        url = self.RATES_URL_TEMPLATE.format(self.tax_year)
-        saved_file = f'temp/nbp_rates_{self.tax_year}.csv'
-
-        if not os.path.exists(saved_file):
-            r = requests.get(url)
-            with open(saved_file, 'wb') as f:
-                f.write(r.content)
-
         rates_by_date = {}
 
-        for row in read_csv_file(saved_file, delimiter=';'):
-            date = row["data"]
-            if not re.match(r'^\d{8}$', date):
-                continue
-            date = datetime.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
-            rates_by_date[date] = {
-                currency_code: D(row[f"{multiplier}{currency_code}"].replace(',', '.'))
-                for currency_code, multiplier in self.SUPPORTED_CURRENCIES.items()
-            }
+        # For early January transactions rates from previous tax year needed
+        for tax_year in (self.tax_year-1, self.tax_year):
+            url = self.RATES_URL_TEMPLATE.format(tax_year)
+            saved_file = f'/tmp/nbp_rates_{tax_year}.csv'
+
+            if not os.path.exists(saved_file):
+                logger.info(f"NBP Rates file not found, fetching {url} into {saved_file}")
+                r = requests.get(url)
+                with open(saved_file, 'wb') as f:
+                    f.write(r.content)
+
+            for row in read_csv_file(saved_file, delimiter=';'):
+                date = row["data"]
+                if not re.match(r'^\d{8}$', date):
+                    continue
+                date = datetime.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
+                rates_by_date[date] = {
+                    currency_code: D(row[f"{multiplier}{currency_code}"].replace(',', '.'))
+                    for currency_code, multiplier in self.SUPPORTED_CURRENCIES.items()
+                }
 
         # Fill missing dates for faster processing
         min_date = min(rates_by_date.keys())

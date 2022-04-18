@@ -1,5 +1,4 @@
 import datetime
-from typing import Optional
 
 from decimal import Decimal as D
 import xml.etree.ElementTree as ET
@@ -7,7 +6,7 @@ import xml.etree.ElementTree as ET
 from dateutil.parser import parse
 
 from reports.base_report import BaseReport
-from tradelog import TradeRecord, TradeLog, InstrumentType
+from tradelog import TradeRecord, InstrumentType
 from utils import logger
 
 
@@ -42,7 +41,6 @@ class IBFlexQueryReport(BaseReport):
         }
 
     def calculate_transactions_and_commissions(self, tree, taxation):
-        trade_log = TradeLog(taxation)
         splits = self.get_splits()
 
         for trade in tree.findall('.//Trade'):
@@ -69,8 +67,9 @@ class IBFlexQueryReport(BaseReport):
             assert attrs['ibCommissionCurrency'] == attrs['currency']
 
             exchange = attrs['listingExchange'] or attrs['underlyingListingExchange']
-            trade_log.add_record(TradeRecord(
-                symbol=f"{symbol}.{exchange}@{attrs['accountId']}",
+            account_id = attrs['accountId'][-5:]  # only last 5 bcs of Lynx accounts migration
+            self.trade_log.add_record(TradeRecord(
+                symbol=f"{symbol}.{exchange}@IB{account_id}",
                 quantity=quantity,
                 price=price,
                 currency=attrs['currency'],
@@ -79,8 +78,6 @@ class IBFlexQueryReport(BaseReport):
                 instrument=instrument,
                 commission=abs(D(attrs['ibCommission'])),
             ))
-
-        trade_log.calculate_closed_positions(self.tax_year)
 
     def calculate_comissions_and_borrowing_fees(self, tree, taxation):
         for fee in tree.findall('.//UnbundledCommissionDetail'):
