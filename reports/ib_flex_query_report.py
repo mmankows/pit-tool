@@ -26,6 +26,14 @@ class IBFlexQueryReport(BaseReport):
         "CASH": InstrumentType.CASH,
     }
 
+    @classmethod
+    def sniff(cls, filename):
+        try:
+            with open(filename) as file:
+                return 'FlexQueryResponse' in file.read(50)
+        except UnicodeDecodeError:
+            return False
+
     def process(self, taxation, filename):
         tree = ET.parse(filename)
         self.calculate_transactions_and_commissions(tree, taxation)
@@ -67,9 +75,12 @@ class IBFlexQueryReport(BaseReport):
             assert attrs['ibCommissionCurrency'] == attrs['currency']
 
             exchange = attrs['listingExchange'] or attrs['underlyingListingExchange']
-            account_id = attrs['accountId'][-5:]  # only last 5 bcs of Lynx accounts migration
+            exchange = exchange.split('.')[0]
+            account_id = "IB" + attrs['accountId'][-5:]  # only last 5 bcs of Lynx accounts migration
             self.trade_log.add_record(TradeRecord(
-                symbol=f"{symbol}.{exchange}@IB{account_id}",
+                symbol=symbol,
+                exchange=exchange,
+                account=account_id,
                 quantity=quantity,
                 price=price,
                 currency=attrs['currency'],

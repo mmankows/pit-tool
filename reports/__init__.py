@@ -12,19 +12,9 @@ SUPPORTED_REPORTS = {
 
 def sniff_report_type(filename):
     possible_reports = []
-    for report_type, report_class in SUPPORTED_REPORTS.items():
-        # TODO - reimplement report detection and remove hack, regexp based?
-        if report_type == "IB_FLEX_QUERY":
-            if filename.endswith('.xml'):
-                return "IB_FLEX_QUERY"
-            else:
-                continue
 
-        expected_columns = {
-            key_value for key_name, key_value in report_class.__dict__.items() if key_name.startswith('column_')
-        }
-        sample_row = next(read_csv_file(filename))
-        if not (expected_columns - set(sample_row.keys())):
+    for report_type, report_class in SUPPORTED_REPORTS.items():
+        if report_class.sniff(filename):
             possible_reports.append(report_type)
 
     assert len(possible_reports) == 1, f"Couldn't sniff report type, possible types: {possible_reports}"

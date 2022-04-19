@@ -1,6 +1,7 @@
+import csv
+from decimal import Decimal as D
 from typing import Optional
 
-from decimal import Decimal as D
 from dateutil.parser import parse
 
 from reports.base_report import BaseReport
@@ -38,6 +39,26 @@ class ExanteTradesReport(BaseReport):
         "FOREX": InstrumentType.CASH,
     }
 
+    @classmethod
+    def sniff(cls, filename):
+        try:
+            sample_row = next(read_csv_file(filename))
+        except csv.Error:
+            return False
+
+        return all(
+            column in sample_row for column in (
+                cls.column_account,
+                cls.column_timestamp,
+                cls.column_type,
+                cls.column_side,
+                cls.column_quantity,
+                cls.column_currency,
+                cls.column_instrument,
+                cls.column_commission,
+            )
+        )
+
     def process(self, taxation, filename):
 
         for row in read_csv_file(filename):
@@ -55,8 +76,17 @@ class ExanteTradesReport(BaseReport):
 
         assert row["Commission Currency"] == row[cls.column_currency]
         side_modifier = TradeRecord.BUY if row[cls.column_side] == cls.side_buy else TradeRecord.SELL
+        print(row[cls.column_instrument])
+        try:
+            symbol, exchange = row[cls.column_instrument].split('.')
+        except ValueError:
+            # Option case
+            symbol, exchange, opt1, opt2 = row[cls.column_instrument].split('.')
+
         return TradeRecord(
-            symbol=f"{row[cls.column_instrument]}@EX{row[cls.column_account]}",
+            symbol=symbol,
+            exchange=exchange,
+            account=cls.column_account,
             quantity=int(row[cls.column_quantity]),
             price=D(row[cls.column_price]),
             currency=row[cls.column_currency],

@@ -1,13 +1,11 @@
-
-
 import datetime
 from decimal import Decimal as D
 from enum import Enum
 from typing import List, TYPE_CHECKING
-from utils import logger, read_csv_file
+
+from utils import logger
 
 if TYPE_CHECKING:
-    from reports.base_report import BaseReport
     from taxations.base_taxation import BaseTaxation
 
 
@@ -20,6 +18,7 @@ class InstrumentType(Enum):
 STOCK_EXCHANGE_COUNTRIES = {
     "ARCA": "US",
     "NASDAQ": "US",
+    "AMEX": "US",
     "CBOE": "US",
     "NYSE": "US",
     "BATS": "US",
@@ -28,10 +27,10 @@ STOCK_EXCHANGE_COUNTRIES = {
     "LSE": "DE",
     "SIX": "CH",
     "SBF": "FR",
-    "BVME": "IT", # Borsa italiana
+    "BVME": "IT",  # Borsa italiana
     "WSE": "PL",
     "MOEX": "RU",
-    "TMX": "CA", # Toronto
+    "TMX": "CA",  # Toronto
 }
 
 
@@ -40,16 +39,20 @@ class TradeRecord:
     SELL = -BUY
 
     def __init__(self,
-         symbol: str,
-         quantity: int,
-         price: D,
-         currency: str,
-         timestamp: datetime.datetime,
-         side: int,
-         instrument: InstrumentType,
-         commission: D,
-    ):
+                 symbol: str,
+                 exchange: str,
+                 account: str,
+                 quantity: int,
+                 price: D,
+                 currency: str,
+                 timestamp: datetime.datetime,
+                 side: int,
+                 instrument: InstrumentType,
+                 commission: D,
+                 ):
         self.symbol = symbol
+        self.exchange = exchange
+        self.account = account
         self.quantity = quantity
         self.price = price
         self.currency = currency
@@ -57,7 +60,6 @@ class TradeRecord:
         self.side = side
         self.instrument = instrument
         self.multiplier = 100 if self.instrument == InstrumentType.OPTION else 1
-        self.exchange = symbol.split('@')[0].split('.')[1]
         self.commission = commission
         assert self.exchange in STOCK_EXCHANGE_COUNTRIES, f"Unknown exchange {self.exchange} for {self.symbol}"
 
@@ -71,6 +73,8 @@ class TradeRecord:
     def copy(self, **updates) -> "TradeRecord":
         params = dict(
             symbol=self.symbol,
+            exchange=self.exchange,
+            account=self.account,
             quantity=self.quantity,
             price=self.price,
             currency=self.currency,
@@ -172,15 +176,14 @@ class TradeLog:
         assert not trades_by_side[TradeRecord.BUY] or not trades_by_side[TradeRecord.SELL]
         assert not pos_left or sum(t.quantity for t in trades) != 0
 
-        # TODO - fix logger
-        # logger.info(
-        #     f"{trades[0].symbol} tot_open: {total_cost} tot_close: {total_income} profit: {total_income - total_cost} pos: {pos_left}")
+        logger.info(
+            f"{trades[0].symbol} profit: {self.taxation.per_position_profit.get(trades[0].symbol, 0)} pos: {pos_left}")
 
     def calculate_closed_positions(self, tax_year):
         logger.info(f"Calculating closed positions for tax_year {tax_year}")
         # Only closed in current tax year should be calculated for tax!
 
-        for symbol, trades in self.records.items():
+        for trades in self.records.values():
             trades = sorted(trades, key=lambda t: t.timestamp)
             self.calc_profit_fifo(trades, tax_year)
 

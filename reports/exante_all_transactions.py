@@ -1,8 +1,10 @@
+import csv
 from decimal import Decimal as D
+
 from dateutil.parser import parse
 
 from reports.base_report import BaseReport
-from utils import read_csv_file, logger
+from utils import read_csv_file
 
 
 class ExanteAllTransactions(BaseReport):
@@ -31,6 +33,23 @@ class ExanteAllTransactions(BaseReport):
     type_dividend_tax = "TAX"
     type_commission = "COMMISSION"
     type_interest = "INTEREST"
+
+    @classmethod
+    def sniff(cls, filename):
+        try:
+            sample_row = next(read_csv_file(filename))
+        except csv.Error:
+            return False
+
+        return all(
+            column in sample_row for column in (
+                cls.column_account,
+                cls.column_timestamp,
+                cls.column_type,
+                cls.column_asset,
+                cls.column_value
+            )
+        )
 
     def process(self, taxation, filename):
         dividends_details = {}
