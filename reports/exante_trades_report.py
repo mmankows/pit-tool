@@ -71,12 +71,12 @@ class ExanteTradesReport(BaseReport):
         # Skip pure asset rows and different transaction types
         instrument_type = cls.instrument_map.get(row[cls.column_type])
         if instrument_type not in {InstrumentType.STOCK, InstrumentType.OPTION}:
-            logger.warning(f"Unsupported instument type: {row[cls.column_type]}, skipping.")
+            logger.warning(f"Unsupported instrument type: {row[cls.column_type]}, skipping.")
             return
 
         assert row["Commission Currency"] == row[cls.column_currency]
         side_modifier = TradeRecord.BUY if row[cls.column_side] == cls.side_buy else TradeRecord.SELL
-        print(row[cls.column_instrument])
+
         try:
             symbol, exchange = row[cls.column_instrument].split('.')
         except ValueError:

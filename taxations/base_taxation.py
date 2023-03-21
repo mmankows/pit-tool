@@ -28,7 +28,7 @@ class BaseTaxation:
         """Convert to taxation base currency for given event date."""
         raise NotImplementedError()
 
-    def add_closed_transaction(self, open_trade: TradeRecord, close_trade: TradeRecord):
+    def add_closed_transaction(self, open_trade: TradeRecord, close_trade: TradeRecord) -> D:
         """Calculate profit/lose between open and close trades."""
         raise NotImplementedError()
 

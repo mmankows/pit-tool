@@ -22,6 +22,7 @@ class IBFlexQueryReport(BaseReport):
 
     instrument_type_map = {
         "STK": InstrumentType.STOCK,
+        "FXCFD": InstrumentType.FOREX,
         "OPT": InstrumentType.OPTION,
         "CASH": InstrumentType.CASH,
     }
@@ -44,8 +45,11 @@ class IBFlexQueryReport(BaseReport):
         # TODO - detect automatically:
         return {
             'REMX': [
-                (datetime.date(2020, 4, 15), 3, 1),
+                (datetime.date(2020, 4, 15), 3, 1), # https://stooq.pl/q/m/?s=remx.us
              ],
+            'URNM': [
+                (datetime.date(2022, 12, 21), 1, 2), # https://stooq.pl/q/m/?s=urnm.us
+            ],
         }
 
     def calculate_transactions_and_commissions(self, tree, taxation):
@@ -54,7 +58,7 @@ class IBFlexQueryReport(BaseReport):
         for trade in tree.findall('.//Trade'):
             attrs = trade.attrib
             instrument = self.instrument_type_map.get(attrs['assetCategory'], attrs['assetCategory'])
-            if instrument not in {InstrumentType.OPTION, InstrumentType.STOCK}:
+            if instrument not in {InstrumentType.OPTION, InstrumentType.STOCK, InstrumentType.FOREX}:
                 logger.warning(f"Unsupported instument type: {instrument}, skipping.")
                 continue
 
@@ -93,24 +97,32 @@ class IBFlexQueryReport(BaseReport):
     def calculate_comissions_and_borrowing_fees(self, tree, taxation):
         for fee in tree.findall('.//UnbundledCommissionDetail'):
             attrs = fee.attrib
-            taxation.add_cost(
-                value=D(attrs['totalCommission']),
-                currency=attrs['currency'],
-                date=parse(attrs['dateTime']).date(),
-            )
+            fee_date = parse(attrs['dateTime']).date()
+            if fee_date.year == self.tax_year:
+                taxation.add_cost(
+                    value=D(attrs['totalCommission']),
+                    currency=attrs['currency'],
+                    date=fee_date,
+                )
 
         # TODO - assuming base currency is PLN
-        total_interest_paid = tree.find('.//InterestAccrualsCurrency[@currency="BASE_SUMMARY"]').attrib['accrualReversal']
-        taxation.add_cost(
-            value=D(total_interest_paid),
-            currency='PLN',
-            date=None,
-        )
+        interests_accurals_base = tree.find('.//InterestAccrualsCurrency[@currency="BASE_SUMMARY"]')
+        fee_date = parse(interests_accurals_base.attrib['toDate']).date()
+        if fee_date.year == self.tax_year:
+            taxation.add_cost(
+                value=D(interests_accurals_base.attrib['accrualReversal']),
+                currency='PLN',
+                date=fee_date,
+            )
 
     def calculate_dividends(self, tree, taxation):
+        recorded_dividends = {}
         for dividend in tree.findall('.//ChangeInDividendAccrual'):
             attrs = dividend.attrib
             pay_date = parse(attrs['payDate']).date()
+            value = D(attrs['grossAmount'])
+            tax = D(attrs['tax'])
+
             # Only current tax rate
             if pay_date.year != self.tax_year:
                 continue
@@ -119,7 +131,14 @@ class IBFlexQueryReport(BaseReport):
             if attrs['code'] != 'Po':
                 continue
 
-            value = D(attrs['grossAmount'])
+            # IB reports have nasty duplicates
+            dividend_key = (attrs['symbol'], abs(value), pay_date)
+            if dividend_key in recorded_dividends:
+                logger.debug(f"Dividend {dividend_key} already recorded - skipping")
+                continue
+            else:
+                recorded_dividends[dividend_key] = True
+
             # Real dividend
             if value > 0:
                 taxation.add_dividend(
@@ -127,7 +146,7 @@ class IBFlexQueryReport(BaseReport):
                     value=value,
                     currency=attrs['currency'],
                     date=pay_date,
-                    withholding_tax_value=D(attrs['tax']),
+                    withholding_tax_value=tax,
                 )
             else:
                 # dividend on short position paid to lender, count as cost

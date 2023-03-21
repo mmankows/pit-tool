@@ -13,6 +13,7 @@ class InstrumentType(Enum):
     STOCK = "STOCK"
     OPTION = "OPTION"
     CASH = "CASH"
+    FOREX = "FOREX"
 
 
 STOCK_EXCHANGE_COUNTRIES = {
@@ -31,6 +32,8 @@ STOCK_EXCHANGE_COUNTRIES = {
     "WSE": "PL",
     "MOEX": "RU",
     "TMX": "CA",  # Toronto
+    "FTA": "US", # Chicago State Exchange System."
+    "FOREX": "FOREX",
 }
 
 
@@ -51,7 +54,7 @@ class TradeRecord:
                  commission: D,
                  ):
         self.symbol = symbol
-        self.exchange = exchange
+        self.exchange = exchange if instrument != InstrumentType.FOREX else "FOREX"
         self.account = account
         self.quantity = quantity
         self.price = price
@@ -59,12 +62,15 @@ class TradeRecord:
         self.timestamp = timestamp
         self.side = side
         self.instrument = instrument
-        self.multiplier = 100 if self.instrument == InstrumentType.OPTION else 1
+        self.multiplier = 100 if instrument == InstrumentType.OPTION else 1
         self.commission = commission
         assert self.exchange in STOCK_EXCHANGE_COUNTRIES, f"Unknown exchange {self.exchange} for {self.symbol}"
 
     def __str__(self) -> str:
         return f"<Trade: {self.timestamp.isoformat()} {self.symbol} {self.side * self.quantity}x{self.price}>"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     @classmethod
     def format_trades(cls, trades) -> str:
@@ -115,6 +121,10 @@ class TradeLog:
         :param tax_year:
         :return:
         """
+        # Don't calculate for past years if all trades closed
+        if not any(t.timestamp.year == tax_year for t in trades):
+            return
+
         logger.debug(f"Calculating profit for following trades: {TradeRecord.format_trades(trades)}")
 
         trades_by_side = {
@@ -142,6 +152,8 @@ class TradeLog:
                 except IndexError:
                     return None
 
+        cur_position = 0
+
         while open_trade := get_next_trade():
             logger.debug(open_trade)
             close_trade = get_next_trade(open_trade)
@@ -151,7 +163,6 @@ class TradeLog:
                 break
 
             closed_quantity = min(close_trade.quantity, open_trade.quantity)
-            self.taxation.add_closed_transaction(open_trade, close_trade)
 
             # Both sides closed
             if close_trade.quantity == open_trade.quantity:
@@ -167,7 +178,10 @@ class TradeLog:
                     close_trade.copy(quantity=close_trade.quantity - closed_quantity)
                 )
 
-            logger.debug(f"{close_trade} ~ {open_trade}")
+            logger.debug(f"{open_trade} x {close_trade}")
+
+            if close_trade.timestamp.year == tax_year:
+                self.taxation.add_closed_transaction(open_trade, close_trade)
 
         # Update stats
         pos_left = trades_by_side[TradeRecord.BUY] + trades_by_side[TradeRecord.SELL]
