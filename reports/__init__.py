@@ -17,7 +17,9 @@ def sniff_report_type(filename):
         if report_class.sniff(filename):
             possible_reports.append(report_type)
 
-    assert len(possible_reports) == 1, f"Couldn't sniff report type, possible types: {possible_reports}"
+    assert (
+        len(possible_reports) == 1
+    ), f"Couldn't sniff report type, possible types: {possible_reports}"
     return possible_reports[0]
 
 

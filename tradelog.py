@@ -32,7 +32,7 @@ STOCK_EXCHANGE_COUNTRIES = {
     "WSE": "PL",
     "MOEX": "RU",
     "TMX": "CA",  # Toronto
-    "FTA": "US", # Chicago State Exchange System."
+    "FTA": "US",  # Chicago State Exchange System."
     "FOREX": "FOREX",
 }
 
@@ -41,18 +41,19 @@ class TradeRecord:
     BUY = 1
     SELL = -BUY
 
-    def __init__(self,
-                 symbol: str,
-                 exchange: str,
-                 account: str,
-                 quantity: int,
-                 price: D,
-                 currency: str,
-                 timestamp: datetime.datetime,
-                 side: int,
-                 instrument: InstrumentType,
-                 commission: D,
-                 ):
+    def __init__(
+        self,
+        symbol: str,
+        exchange: str,
+        account: str,
+        quantity: int,
+        price: D,
+        currency: str,
+        timestamp: datetime.datetime,
+        side: int,
+        instrument: InstrumentType,
+        commission: D,
+    ):
         self.symbol = symbol
         self.exchange = exchange if instrument != InstrumentType.FOREX else "FOREX"
         self.account = account
@@ -64,7 +65,9 @@ class TradeRecord:
         self.instrument = instrument
         self.multiplier = 100 if instrument == InstrumentType.OPTION else 1
         self.commission = commission
-        assert self.exchange in STOCK_EXCHANGE_COUNTRIES, f"Unknown exchange {self.exchange} for {self.symbol}"
+        assert (
+            self.exchange in STOCK_EXCHANGE_COUNTRIES
+        ), f"Unknown exchange {self.exchange} for {self.symbol}"
 
     def __str__(self) -> str:
         return f"<Trade: {self.timestamp.isoformat()} {self.symbol} {self.side * self.quantity}x{self.price}>"
@@ -101,9 +104,7 @@ class TradeLog:
         self.total_cost = self.total_income = 0
 
     def __str__(self) -> str:
-        return (
-            f"= Position left for next tax year: {TradeRecord.format_trades(self.outstanding_positions)}"
-        )
+        return f"= Position left for next tax year: {TradeRecord.format_trades(self.outstanding_positions)}"
 
     def reset_stats(self):
         self.outstanding_positions = []
@@ -125,7 +126,9 @@ class TradeLog:
         if not any(t.timestamp.year == tax_year for t in trades):
             return
 
-        logger.debug(f"Calculating profit for following trades: {TradeRecord.format_trades(trades)}")
+        logger.debug(
+            f"Calculating profit for following trades: {TradeRecord.format_trades(trades)}"
+        )
 
         trades_by_side = {
             TradeRecord.BUY: [t for t in trades if t.side == TradeRecord.BUY][::-1],
@@ -133,7 +136,9 @@ class TradeLog:
         }
 
         def get_next_trade(cur_trade=None):
-            if not (trades_by_side[TradeRecord.BUY] or trades_by_side[TradeRecord.SELL]):
+            if not (
+                trades_by_side[TradeRecord.BUY] or trades_by_side[TradeRecord.SELL]
+            ):
                 return None
 
             if cur_trade is None:
@@ -141,7 +146,10 @@ class TradeLog:
                     return trades_by_side[TradeRecord.SELL].pop()
                 elif not trades_by_side[TradeRecord.SELL]:
                     return trades_by_side[TradeRecord.BUY].pop()
-                elif trades_by_side[TradeRecord.SELL][0].timestamp > trades_by_side[TradeRecord.BUY][0].timestamp:
+                elif (
+                    trades_by_side[TradeRecord.SELL][0].timestamp
+                    > trades_by_side[TradeRecord.BUY][0].timestamp
+                ):
                     return trades_by_side[TradeRecord.BUY].pop()
                 else:
                     return trades_by_side[TradeRecord.SELL].pop()
@@ -185,13 +193,17 @@ class TradeLog:
 
         # Update stats
         pos_left = trades_by_side[TradeRecord.BUY] + trades_by_side[TradeRecord.SELL]
+        pos_left_size_from_trades = sum(t.quantity for t in trades)
         self.outstanding_positions.extend(pos_left)
 
-        assert not trades_by_side[TradeRecord.BUY] or not trades_by_side[TradeRecord.SELL]
-        assert not pos_left or sum(t.quantity for t in trades) != 0
+        assert (
+            not trades_by_side[TradeRecord.BUY] or not trades_by_side[TradeRecord.SELL]
+        )
+        assert not pos_left or pos_left_size_from_trades != 0
 
         logger.info(
-            f"{trades[0].symbol} profit: {self.taxation.per_position_profit.get(trades[0].symbol, 0)} pos: {pos_left}")
+            f"{trades[0].symbol} profit: {self.taxation.per_position_profit.get(trades[0].symbol, 0)} pos: {pos_left_size_from_trades} {pos_left}"
+        )
 
     def calculate_closed_positions(self, tax_year):
         logger.info(f"Calculating closed positions for tax_year {tax_year}")

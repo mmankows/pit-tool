@@ -32,22 +32,25 @@ class PolishNbpRatesFIFO(BaseTaxation):
         - wymiany waluty nie uwzględniać
         - w PIT38 kwoty z Z/G idą do pozycji drugiej
     """
-    RATES_URL_TEMPLATE = 'https://www.nbp.pl/kursy/Archiwum/archiwum_tab_a_{}.csv'
-    BASE_CURRENCY = 'PLN'
+
+    RATES_URL_TEMPLATE = "https://www.nbp.pl/kursy/Archiwum/archiwum_tab_a_{}.csv"
+    BASE_CURRENCY = "PLN"
     SUPPORTED_CURRENCIES = {
-        'EUR': 1,
-        'USD': 1,
-        'RUB': 1,
-        'CHF': 1,
+        "EUR": 1,
+        "USD": 1,
+        "RUB": 1,
+        "CHF": 1,
     }
-    TAX_RATE = D('0.19')
+    TAX_RATE = D("0.19")
 
     def __init__(self, *args, **kwargs):
         super(PolishNbpRatesFIFO, self).__init__(*args, **kwargs)
 
     @property
     def summary(self) -> str:
-        total_transaction_costs_and_fees = self.total_transaction_cost + self.total_costs
+        total_transaction_costs_and_fees = (
+            self.total_transaction_cost + self.total_costs
+        )
         profit = self.total_transaction_income - total_transaction_costs_and_fees
 
         return (
@@ -79,7 +82,11 @@ class PolishNbpRatesFIFO(BaseTaxation):
 
     @property
     def total_transaction_owed_tax(self):
-        profit = self.total_transaction_income - self.total_transaction_cost - self.total_costs
+        profit = (
+            self.total_transaction_income
+            - self.total_transaction_cost
+            - self.total_costs
+        )
         return round(self.TAX_RATE * max(profit, 0))
 
     @cached_property
@@ -89,24 +96,32 @@ class PolishNbpRatesFIFO(BaseTaxation):
         # For early January transactions rates from previous tax year needed
         for tax_year in range(2020, self.tax_year + 1):
             url = self.RATES_URL_TEMPLATE.format(tax_year)
-            saved_file = tempfile.gettempdir() / Path(f'nbp_rates_{tax_year}.csv')
+            saved_file = tempfile.gettempdir() / Path(f"nbp_rates_{tax_year}.csv")
 
             if not os.path.exists(saved_file):
-                logger.info(f"NBP Rates file not found, fetching {url} into {saved_file}")
+                logger.info(
+                    f"NBP Rates file not found, fetching {url} into {saved_file}"
+                )
                 r = requests.get(url)
-                with open(saved_file, 'wb') as f:
+                with open(saved_file, "wb") as f:
                     f.write(r.content)
 
-            for row in read_csv_file(saved_file, delimiter=';'):
+            for row in read_csv_file(saved_file, delimiter=";", cols_to_lower=False):
                 date = row["data"]
-                if not re.match(r'^\d{8}$', date):
+                if not re.match(r"^\d{8}$", date):
                     continue
                 date = datetime.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
                 rates_by_date[date] = {}
                 for currency_code, multiplier in self.SUPPORTED_CURRENCIES.items():
-                    rate = row[f"{multiplier}{currency_code}"].replace(',', '.')
+                    try:
+                        rate = row[f"{multiplier}{currency_code}"].replace(",", ".")
+                    except KeyError:
+                        rate = None
+
                     if not rate:
-                        logger.debug(f"No rate found for {currency_code} on {date.isoformat()})")
+                        logger.debug(
+                            f"No rate found for {currency_code} on {date.isoformat()})"
+                        )
                         continue
                     rates_by_date[date][currency_code] = D(rate)
 
@@ -117,7 +132,9 @@ class PolishNbpRatesFIFO(BaseTaxation):
         while cur_date < max_date:
             cur_date += datetime.timedelta(days=1)
             if cur_date not in rates_by_date:
-                rates_by_date[cur_date] = rates_by_date[cur_date - datetime.timedelta(days=1)]
+                rates_by_date[cur_date] = rates_by_date[
+                    cur_date - datetime.timedelta(days=1)
+                ]
 
         return rates_by_date
 
@@ -135,12 +152,12 @@ class PolishNbpRatesFIFO(BaseTaxation):
         value_open = self.exchange(
             open_trade.currency,
             open_trade.price * closed_quantity * open_trade.multiplier,
-            open_trade.timestamp.date()
+            open_trade.timestamp.date(),
         )
         value_close = self.exchange(
             close_trade.currency,
             close_trade.price * closed_quantity * close_trade.multiplier,
-            close_trade.timestamp.date()
+            close_trade.timestamp.date(),
         )
 
         # Support shorts
@@ -149,21 +166,31 @@ class PolishNbpRatesFIFO(BaseTaxation):
 
         value_open = round(value_open, 2)
         value_close = round(value_close, 2)
-        commissions = round(self.exchange(
-            close_trade.currency,
-            close_trade.commission,
-            close_trade.timestamp.date(),
-        ), 2) + round(self.exchange(
-            open_trade.currency,
-            open_trade.commission,
-            open_trade.timestamp.date()
-        ), 2)
+        commissions = round(
+            self.exchange(
+                close_trade.currency,
+                close_trade.commission,
+                close_trade.timestamp.date(),
+            ),
+            2,
+        ) + round(
+            self.exchange(
+                open_trade.currency, open_trade.commission, open_trade.timestamp.date()
+            ),
+            2,
+        )
 
-        self.per_position_profit[open_trade.symbol] = self.per_position_profit.get(open_trade.symbol,
-                                                                                   0) + value_close - value_open
-        self.per_country_trades_breakdown[STOCK_EXCHANGE_COUNTRIES[open_trade.exchange]][
-            "cost"] += value_open + commissions
-        self.per_country_trades_breakdown[STOCK_EXCHANGE_COUNTRIES[open_trade.exchange]]["income"] += value_close
+        self.per_position_profit[open_trade.symbol] = (
+            self.per_position_profit.get(open_trade.symbol, 0)
+            + value_close
+            - value_open
+        )
+        self.per_country_trades_breakdown[
+            STOCK_EXCHANGE_COUNTRIES[open_trade.exchange]
+        ]["cost"] += (value_open + commissions)
+        self.per_country_trades_breakdown[
+            STOCK_EXCHANGE_COUNTRIES[open_trade.exchange]
+        ]["income"] += value_close
 
         self.total_transaction_cost += value_open
         self.total_transaction_income += value_close
@@ -179,9 +206,10 @@ class PolishNbpRatesFIFO(BaseTaxation):
         paid_tax_rate = round(100 * paid_tax / dividend_income)
         # TODO - remove hack, if we paid 30% with tax in us we gotta pay 4% anyway XD
         if paid_tax_rate == 30:
-            owed_tax = round(D('0.4') * dividend_income, 2)
+            owed_tax = round(D("0.4") * dividend_income, 2)
         logger.info(
-            f"Dividend: {date.isoformat()} {symbol} {dividend_income} ({value} {currency}) tax: {paid_tax} ({paid_tax_rate}%) /{model_tax} ({100 * self.TAX_RATE}%)")
+            f"Dividend: {date.isoformat()} {symbol} {dividend_income} ({value} {currency}) tax: {paid_tax} ({paid_tax_rate}%) /{model_tax} ({100 * self.TAX_RATE}%)"
+        )
 
         self.total_dividend_value += dividend_income
         self.total_dividend_withholding_tax += paid_tax

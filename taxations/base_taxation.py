@@ -14,10 +14,13 @@ class BaseTaxation:
         self.total_transaction_cost = 0
         self.total_costs = 0
         self.per_position_profit = {}
-        self.per_country_trades_breakdown = {k: {
-            "income": 0,
-            "cost": 0,
-        } for k in STOCK_EXCHANGE_COUNTRIES.values()}
+        self.per_country_trades_breakdown = {
+            k: {
+                "income": 0,
+                "cost": 0,
+            }
+            for k in STOCK_EXCHANGE_COUNTRIES.values()
+        }
 
     @property
     def summary(self) -> str:
@@ -28,17 +31,19 @@ class BaseTaxation:
         """Convert to taxation base currency for given event date."""
         raise NotImplementedError()
 
-    def add_closed_transaction(self, open_trade: TradeRecord, close_trade: TradeRecord) -> D:
+    def add_closed_transaction(
+        self, open_trade: TradeRecord, close_trade: TradeRecord
+    ) -> D:
         """Calculate profit/lose between open and close trades."""
         raise NotImplementedError()
 
     def add_dividend(
-            self,
-            symbol: str,
-            currency: str,
-            value: D,
-            date: datetime.date,
-            withholding_tax_value: D
+        self,
+        symbol: str,
+        currency: str,
+        value: D,
+        date: datetime.date,
+        withholding_tax_value: D,
     ) -> None:
         """Calculate dividend income and tax."""
         raise NotImplementedError()

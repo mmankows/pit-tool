@@ -1,10 +1,13 @@
 import csv
+import logging
 from decimal import Decimal as D
 
 from dateutil.parser import parse
 
 from reports.base_report import BaseReport
 from utils import read_csv_file
+
+logger = logging.getLogger("exante_all_transactions")
 
 
 class ExanteAllTransactions(BaseReport):
@@ -23,14 +26,17 @@ class ExanteAllTransactions(BaseReport):
         'Comment': 'None'
     }
     """
-    column_account = 'Account ID'
-    column_symbol = 'Symbol ID'
-    column_type = 'Operation type'
-    column_asset = 'Asset'
-    column_value = 'Sum'
-    column_timestamp = 'When'
+
+    column_account = "Account ID".lower()
+    column_symbol = "Symbol ID".lower()
+    column_type = "Operation type".lower()
+    column_asset = "Asset".lower()
+    column_value = "Sum".lower()
+    column_timestamp = "When".lower()
+    column_comment = "Comment".lower()
+    comment_tax_recalc = "US TAX recalculation"
     type_dividend = "DIVIDEND"
-    type_dividend_tax = "TAX"
+    type_dividend_tax = ("TAX", "US TAX")
     type_commission = "COMMISSION"
     type_interest = "INTEREST"
 
@@ -41,13 +47,15 @@ class ExanteAllTransactions(BaseReport):
         except csv.Error:
             return False
 
+        logger.debug("Sample header row: {}".format(sample_row))
+
         return all(
-            column in sample_row for column in (
+            column.lower() in sample_row
+            for column in (
                 cls.column_account,
                 cls.column_timestamp,
                 cls.column_type,
-                cls.column_asset,
-                cls.column_value
+                cls.column_value,
             )
         )
 
@@ -57,7 +65,12 @@ class ExanteAllTransactions(BaseReport):
             operation_type = row[self.column_type]
             value = D(row[self.column_value])
             timestamp = parse(row[self.column_timestamp])
+            comment = row[self.column_comment]
             key = f"{row[self.column_symbol]}@{row[self.column_account]}:{timestamp.date().isoformat()}"
+
+            # Minor tax corrections for previous year are possible, skip if below $0.1
+            if self.comment_tax_recalc in comment and abs(value) < D("0.1"):
+                continue
 
             if timestamp.year != self.tax_year:
                 continue
@@ -70,18 +83,22 @@ class ExanteAllTransactions(BaseReport):
             # Collect dividends and taxes
             elif operation_type == self.type_dividend:
                 dividends_details.setdefault(key, {})
-                dividends_details[key].update({
-                    'symbol': key,
-                    'value': D(row[self.column_value]),
-                    'date': timestamp.date(),
-                    'currency': row[self.column_asset],
-                })
+                dividends_details[key].update(
+                    {
+                        "symbol": key,
+                        "value": value,
+                        "date": timestamp.date(),
+                        "currency": row[self.column_asset],
+                    }
+                )
 
-            elif operation_type == self.type_dividend_tax:
+            elif operation_type in self.type_dividend_tax:
                 dividends_details.setdefault(key, {})
-                dividends_details[key].update({
-                    'withholding_tax_value': D(row[self.column_value]),
-                })
+                dividends_details[key].update(
+                    {
+                        "withholding_tax_value": value,
+                    }
+                )
 
         # Summarize dividends
         for dividend_name, details in dividends_details.items():
