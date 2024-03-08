@@ -42,8 +42,6 @@ class IBFlexQueryReport(BaseReport):
         self.calculate_dividends(tree, taxation)
 
     def calculate_transactions_and_commissions(self, tree, taxation):
-        splits = self.get_splits()
-
         for trade in tree.findall(".//Trade"):
             attrs = trade.attrib
             instrument = self.instrument_type_map.get(

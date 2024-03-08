@@ -180,10 +180,8 @@ class PolishNbpRatesFIFO(BaseTaxation):
             2,
         )
 
-        self.per_position_profit[open_trade.symbol] = (
-            self.per_position_profit.get(open_trade.symbol, 0)
-            + value_close
-            - value_open
+        self.per_position_profit[open_trade.key] = (
+            self.per_position_profit.get(open_trade.key, 0) + value_close - value_open
         )
         self.per_country_trades_breakdown[
             STOCK_EXCHANGE_COUNTRIES[open_trade.exchange]

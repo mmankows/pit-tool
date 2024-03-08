@@ -75,6 +75,11 @@ class TradeRecord:
     def __repr__(self) -> str:
         return self.__str__()
 
+    @property
+    def key(self):
+        """Unique key to match trades in case of multiple sub-accounts."""
+        return self.account, self.symbol
+
     @classmethod
     def format_trades(cls, trades) -> str:
         return "\n\t" + "\n\t".join(map(str, trades))
@@ -112,8 +117,8 @@ class TradeLog:
         self.total_income = 0
 
     def add_record(self, trade_record: TradeRecord) -> None:
-        self.records[trade_record.symbol] = self.records.get(trade_record.symbol, [])
-        self.records[trade_record.symbol].append(trade_record)
+        self.records[trade_record.key] = self.records.get(trade_record.key, [])
+        self.records[trade_record.key].append(trade_record)
 
     def calc_profit_fifo(self, trades: List[TradeRecord], tax_year: int):
         """
@@ -202,7 +207,7 @@ class TradeLog:
         assert not pos_left or pos_left_size_from_trades != 0
 
         logger.info(
-            f"{trades[0].symbol} profit: {self.taxation.per_position_profit.get(trades[0].symbol, 0)} pos: {pos_left_size_from_trades} {pos_left}"
+            f"{trades[0].symbol} profit: {self.taxation.per_position_profit.get(trades[0].key, 0)} pos: {pos_left_size_from_trades} {pos_left}"
         )
 
     def calculate_closed_positions(self, tax_year):
