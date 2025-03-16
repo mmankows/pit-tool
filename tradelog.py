@@ -109,7 +109,10 @@ class TradeLog:
         self.total_cost = self.total_income = 0
 
     def __str__(self) -> str:
-        return f"= Position left for next tax year: {TradeRecord.format_trades(self.outstanding_positions)}"
+        if self.outstanding_positions:
+            return f"= Position left for next tax year: {TradeRecord.format_trades(self.outstanding_positions)}"
+        else:
+            return "No position left for next tax year."
 
     def reset_stats(self):
         self.outstanding_positions = []
